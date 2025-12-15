@@ -1,0 +1,21 @@
+{
+  "name": "student-management-selenium-tests",
+  "version": "1.0.0",
+  "description": "Selenium automated tests for Student Management System",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test-runner.js",
+    "test:chrome": "node test-runner.js",
+    "test:firefox": "BROWSER=firefox node test-runner.js"
+  },
+  "keywords": ["selenium", "testing", "automation"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "selenium-webdriver": "^4.16.0",
+    "chromedriver": "^119.0.1"
+  },
+  "devDependencies": {
+    "geckodriver": "^4.3.0"
+  }
+}

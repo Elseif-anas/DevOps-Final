@@ -1,0 +1,19 @@
+# Frontend Service with LoadBalancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: student-management
+  labels:
+    app: frontend
+    tier: presentation
+spec:
+  type: LoadBalancer
+  selector:
+    app: frontend
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  sessionAffinity: ClientIP

@@ -1,0 +1,429 @@
+---
+# Ansible Playbook for Student Management System Infrastructure Setup
+# This playbook configures web servers, application servers, and database servers
+
+- name: Configure Web Servers (Nginx)
+  hosts: webservers
+  become: yes
+  vars:
+    nginx_port: 80
+  
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: [update]
+
+    - name: Install required packages
+      apt:
+        name:
+          - nginx
+          - curl
+          - git
+          - ufw
+        state: present
+      tags: [packages]
+
+    - name: Configure UFW firewall
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "80"
+        - "443"
+      tags: [firewall]
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+      tags: [firewall]
+
+    - name: Start and enable Nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+      tags: [nginx]
+
+    - name: Create web directory
+      file:
+        path: /var/www/student-management
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+      tags: [nginx]
+
+    - name: Configure Nginx for Student Management
+      copy:
+        dest: /etc/nginx/sites-available/student-management
+        content: |
+          server {
+              listen 80;
+              server_name _;
+              root /var/www/student-management;
+              index index.html;
+
+              location / {
+                  try_files $uri $uri/ /index.html;
+              }
+
+              location /api {
+                  proxy_pass http://{{ groups['appservers'][0] }}:5000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection 'upgrade';
+                  proxy_set_header Host $host;
+                  proxy_cache_bypass $http_upgrade;
+              }
+          }
+      tags: [nginx]
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/student-management
+        dest: /etc/nginx/sites-enabled/student-management
+        state: link
+      notify: Restart Nginx
+      tags: [nginx]
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Restart Nginx
+      tags: [nginx]
+
+    - name: Verify Nginx configuration
+      command: nginx -t
+      register: nginx_test
+      changed_when: false
+      tags: [nginx]
+
+    - name: Display Nginx test results
+      debug:
+        var: nginx_test.stderr_lines
+      tags: [nginx]
+
+  handlers:
+    - name: Restart Nginx
+      systemd:
+        name: nginx
+        state: restarted
+
+
+- name: Configure Application Servers (Node.js)
+  hosts: appservers
+  become: yes
+  vars:
+    nodejs_version: "18"
+  
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: [update]
+
+    - name: Install required dependencies
+      apt:
+        name:
+          - curl
+          - git
+          - build-essential
+          - ufw
+        state: present
+      tags: [packages]
+
+    - name: Add NodeSource repository
+      shell: curl -fsSL https://deb.nodesource.com/setup_{{ nodejs_version }}.x | bash -
+      args:
+        creates: /etc/apt/sources.list.d/nodesource.list
+      tags: [nodejs]
+
+    - name: Install Node.js
+      apt:
+        name: nodejs
+        state: present
+      tags: [nodejs]
+
+    - name: Install global npm packages
+      npm:
+        name: "{{ item }}"
+        global: yes
+        state: present
+      loop:
+        - pm2
+        - nodemon
+      tags: [nodejs]
+
+    - name: Configure UFW for application port
+      ufw:
+        rule: allow
+        port: "5000"
+        proto: tcp
+      tags: [firewall]
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+      tags: [firewall]
+
+    - name: Create application directory
+      file:
+        path: /opt/student-management-backend
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      tags: [app]
+
+    - name: Create .env file for backend
+      copy:
+        dest: /opt/student-management-backend/.env
+        content: |
+          PORT=5000
+          MONGODB_URI=mongodb://{{ groups['dbservers'][0] }}:27017/student_management
+          NODE_ENV=production
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      tags: [app]
+
+    - name: Display Node.js version
+      command: node --version
+      register: node_version
+      changed_when: false
+      tags: [nodejs]
+
+    - name: Display npm version
+      command: npm --version
+      register: npm_version
+      changed_when: false
+      tags: [nodejs]
+
+    - name: Show installed versions
+      debug:
+        msg: 
+          - "Node.js version: {{ node_version.stdout }}"
+          - "npm version: {{ npm_version.stdout }}"
+      tags: [nodejs]
+
+
+- name: Configure Database Servers (MongoDB)
+  hosts: dbservers
+  become: yes
+  vars:
+    mongodb_version: "7.0"
+  
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: [update]
+
+    - name: Install required dependencies
+      apt:
+        name:
+          - gnupg
+          - curl
+          - wget
+          - ufw
+        state: present
+      tags: [packages]
+
+    - name: Add MongoDB GPG key
+      apt_key:
+        url: https://www.mongodb.org/static/pgp/server-{{ mongodb_version }}.asc
+        state: present
+      tags: [mongodb]
+
+    - name: Add MongoDB repository
+      apt_repository:
+        repo: "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu {{ ansible_distribution_release }}/mongodb-org/{{ mongodb_version }} multiverse"
+        state: present
+        filename: mongodb-org-{{ mongodb_version }}
+      tags: [mongodb]
+
+    - name: Update apt cache after adding MongoDB repo
+      apt:
+        update_cache: yes
+      tags: [mongodb]
+
+    - name: Install MongoDB
+      apt:
+        name:
+          - mongodb-org
+        state: present
+      tags: [mongodb]
+
+    - name: Configure UFW for MongoDB
+      ufw:
+        rule: allow
+        port: "27017"
+        proto: tcp
+      tags: [firewall]
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+      tags: [firewall]
+
+    - name: Configure MongoDB to listen on all interfaces
+      lineinfile:
+        path: /etc/mongod.conf
+        regexp: '^  bindIp:'
+        line: '  bindIp: 0.0.0.0'
+      notify: Restart MongoDB
+      tags: [mongodb]
+
+    - name: Start and enable MongoDB
+      systemd:
+        name: mongod
+        state: started
+        enabled: yes
+      tags: [mongodb]
+
+    - name: Wait for MongoDB to start
+      wait_for:
+        port: 27017
+        delay: 5
+        timeout: 30
+      tags: [mongodb]
+
+    - name: Display MongoDB status
+      command: systemctl status mongod
+      register: mongodb_status
+      changed_when: false
+      tags: [mongodb]
+
+  handlers:
+    - name: Restart MongoDB
+      systemd:
+        name: mongod
+        state: restarted
+
+
+- name: Install Docker on all servers
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: [docker]
+
+    - name: Install Docker dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - gnupg
+          - lsb-release
+        state: present
+      tags: [docker]
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      tags: [docker]
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+      tags: [docker]
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+      tags: [docker]
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+      tags: [docker]
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+      tags: [docker]
+
+    - name: Display Docker version
+      command: docker --version
+      register: docker_version
+      changed_when: false
+      tags: [docker]
+
+    - name: Show Docker version
+      debug:
+        var: docker_version.stdout
+      tags: [docker]
+
+
+- name: System hardening and security
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Update all packages
+      apt:
+        upgrade: dist
+        update_cache: yes
+      tags: [security]
+
+    - name: Install security packages
+      apt:
+        name:
+          - fail2ban
+          - unattended-upgrades
+        state: present
+      tags: [security]
+
+    - name: Start and enable fail2ban
+      systemd:
+        name: fail2ban
+        state: started
+        enabled: yes
+      tags: [security]
+
+    - name: Configure automatic security updates
+      copy:
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        content: |
+          Unattended-Upgrade::Allowed-Origins {
+              "${distro_id}:${distro_codename}-security";
+          };
+          Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+          Unattended-Upgrade::MinimalSteps "true";
+          Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+          Unattended-Upgrade::Remove-Unused-Dependencies "true";
+          Unattended-Upgrade::Automatic-Reboot "false";
+      tags: [security]
+
+    - name: Display system information
+      debug:
+        msg:
+          - "Hostname: {{ ansible_hostname }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Architecture: {{ ansible_architecture }}"
+          - "IP Address: {{ ansible_default_ipv4.address }}"
+      tags: [info]

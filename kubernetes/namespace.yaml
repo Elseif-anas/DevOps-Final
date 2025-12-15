@@ -1,0 +1,8 @@
+# Namespace for Student Management System
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: student-management
+  labels:
+    name: student-management
+    environment: production
