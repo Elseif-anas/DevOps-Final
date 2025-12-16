@@ -223,16 +223,33 @@ jobs:
         run: |
           kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
       
-      - name: Deploy to AKS
+      - name: Apply Kubernetes Manifests
         run: |
           kubectl apply -f kubernetes/ -n ${{ env.NAMESPACE }}
       
-      - name: Verify Deployment
+      - name: Update Deployment with Latest Images
+        run: |
+          echo "Updating deployments with latest Docker images..."
+          
+          # Force update backend deployment
+          kubectl set image deployment/backend-deployment \
+            backend=${{ env.BACKEND_IMAGE }}:latest \
+            -n ${{ env.NAMESPACE }}
+          
+          # Force update frontend deployment
+          kubectl set image deployment/frontend-deployment \
+            frontend=${{ env.FRONTEND_IMAGE }}:latest \
+            -n ${{ env.NAMESPACE }}
+          
+          # Restart deployments to pull latest images
+          kubectl rollout restart deployment/backend-deployment -n ${{ env.NAMESPACE }}
+          kubectl rollout restart deployment/frontend-deployment -n ${{ env.NAMESPACE }}
+      
+      - name: Wait for Deployment Rollout
         run: |
           echo "Waiting for deployments to be ready..."
-          kubectl rollout status deployment/mongodb-deployment -n ${{ env.NAMESPACE }} --timeout=5m
-          kubectl rollout status deployment/backend-deployment -n ${{ env.NAMESPACE }} --timeout=5m
-          kubectl rollout status deployment/frontend-deployment -n ${{ env.NAMESPACE }} --timeout=5m
+          kubectl rollout status deployment/backend-deployment -n ${{ env.NAMESPACE }} --timeout=10m
+          kubectl rollout status deployment/frontend-deployment -n ${{ env.NAMESPACE }} --timeout=10m
       
       - name: Get Service URLs
         run: |
