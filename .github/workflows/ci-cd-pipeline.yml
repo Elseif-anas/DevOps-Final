@@ -1,0 +1,339 @@
+name: CI/CD Pipeline - Student Management System
+
+# Trigger Configuration - Runs on push to main/develop and on pull requests
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:  # Manual trigger
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  REGISTRY: docker.io
+  BACKEND_IMAGE: anasfida/student-backend
+  FRONTEND_IMAGE: anasfida/student-frontend
+  MONGO_IMAGE: anasfida/student-mongo
+  AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+  NAMESPACE: student-management
+
+jobs:
+  # ========================================
+  # STAGE 1: BUILD & TEST BACKEND
+  # ========================================
+  build-and-test-backend:
+    name: Build and Test Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+      
+      - name: Run Backend Tests
+        working-directory: ./backend
+        run: npm test
+        env:
+          NODE_ENV: test
+      
+      - name: Upload Backend Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/coverage/
+          retention-days: 7
+
+  # ========================================
+  # STAGE 1: BUILD & TEST FRONTEND
+  # ========================================
+  build-and-test-frontend:
+    name: Build and Test Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+      
+      - name: Run Frontend Tests
+        working-directory: ./frontend
+        run: CI=true npm test -- --passWithNoTests
+        env:
+          CI: true
+      
+      - name: Build Frontend Application
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          REACT_APP_API_URL: http://backend-service:5000/api
+      
+      - name: Upload Frontend Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+          retention-days: 7
+
+  # ========================================
+  # STAGE 2: BUILD & PUSH DOCKER IMAGES
+  # ========================================
+  build-and-push-docker:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [build-and-test-backend, build-and-test-frontend]
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Extract metadata for Backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache,mode=max
+      
+      - name: Extract metadata for Frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache,mode=max
+      
+      - name: Extract metadata for MongoDB
+        id: meta-mongo
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.MONGO_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and Push MongoDB Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./database
+          file: ./database/Dockerfile
+          push: true
+          tags: ${{ steps.meta-mongo.outputs.tags }}
+          labels: ${{ steps.meta-mongo.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.MONGO_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.MONGO_IMAGE }}:buildcache,mode=max
+      
+      - name: Docker Hub Image Summary
+        run: |
+          echo "### Docker Images Published ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Image |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | \`${{ env.BACKEND_IMAGE }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | \`${{ env.FRONTEND_IMAGE }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| MongoDB | \`${{ env.MONGO_IMAGE }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+
+  # ========================================
+  # STAGE 3: DEPLOY TO AZURE KUBERNETES
+  # ========================================
+  deploy-to-aks:
+    name: Deploy to Azure Kubernetes Service
+    runs-on: ubuntu-latest
+    needs: build-and-push-docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+      
+      - name: Create Namespace if Not Exists
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Deploy to AKS
+        run: |
+          kubectl apply -f kubernetes/ -n ${{ env.NAMESPACE }}
+      
+      - name: Verify Deployment
+        run: |
+          echo "Waiting for deployments to be ready..."
+          kubectl rollout status deployment/mongodb-deployment -n ${{ env.NAMESPACE }} --timeout=5m
+          kubectl rollout status deployment/backend-deployment -n ${{ env.NAMESPACE }} --timeout=5m
+          kubectl rollout status deployment/frontend-deployment -n ${{ env.NAMESPACE }} --timeout=5m
+      
+      - name: Get Service URLs
+        run: |
+          echo "### Kubernetes Deployment Status ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Pods:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n ${{ env.NAMESPACE }} >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Services:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get svc -n ${{ env.NAMESPACE }} >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Get Frontend LoadBalancer IP
+          EXTERNAL_IP=$(kubectl get svc frontend-service -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          if [ ! -z "$EXTERNAL_IP" ]; then
+            echo "🌐 **Application URL:** http://$EXTERNAL_IP" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Deployment Success Notification
+        run: |
+          echo "✅ Deployment completed successfully!"
+          echo "Namespace: ${{ env.NAMESPACE }}"
+          echo "Cluster: ${{ env.AKS_CLUSTER_NAME }}"
+
+  # ========================================
+  # STAGE 4: POST-DEPLOYMENT VALIDATION
+  # ========================================
+  validate-deployment:
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+    needs: deploy-to-aks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+      
+      - name: Check Pod Health
+        run: |
+          echo "Checking all pods are running..."
+          PODS_NOT_RUNNING=$(kubectl get pods -n ${{ env.NAMESPACE }} --field-selector=status.phase!=Running --no-headers 2>/dev/null | wc -l)
+          
+          if [ $PODS_NOT_RUNNING -gt 0 ]; then
+            echo "⚠️ Warning: Some pods are not in Running state"
+            kubectl get pods -n ${{ env.NAMESPACE }}
+          else
+            echo "✅ All pods are running successfully"
+          fi
+      
+      - name: Test Backend Health Endpoint
+        run: |
+          echo "Testing backend health endpoint..."
+          BACKEND_IP=$(kubectl get svc backend-service -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.clusterIP}')
+          kubectl run test-pod --rm -i --restart=Never --image=curlimages/curl:latest -n ${{ env.NAMESPACE }} -- curl -s http://$BACKEND_IP:5000/health || echo "Backend health check failed"
+      
+      - name: Generate Deployment Report
+        run: |
+          echo "### Deployment Validation Report 📊" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Details:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Namespace: \`${{ env.NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Cluster: \`${{ env.AKS_CLUSTER_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Resource Group: \`${{ env.AZURE_RESOURCE_GROUP }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ========================================
+  # NOTIFICATION STAGE
+  # ========================================
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [build-and-test-backend, build-and-test-frontend, build-and-push-docker, deploy-to-aks, validate-deployment]
+    if: always()
+    
+    steps:
+      - name: Pipeline Summary
+        run: |
+          echo "## 🎉 CI/CD Pipeline Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Stage Results:" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Backend: ${{ needs.build-and-test-backend.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Frontend: ${{ needs.build-and-test-frontend.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker Build & Push: ${{ needs.build-and-push-docker.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- AKS Deployment: ${{ needs.deploy-to-aks.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Validation: ${{ needs.validate-deployment.result }}" >> $GITHUB_STEP_SUMMARY
