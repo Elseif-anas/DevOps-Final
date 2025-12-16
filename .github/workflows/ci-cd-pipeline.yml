@@ -215,8 +215,9 @@ jobs:
       - name: Set AKS Context
         uses: azure/aks-set-context@v3
         with:
-          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
-          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+          admin: false
       
       - name: Create Namespace if Not Exists
         run: |
