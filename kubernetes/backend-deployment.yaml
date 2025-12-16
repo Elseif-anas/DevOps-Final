@@ -25,8 +25,8 @@ spec:
     spec:
       containers:
       - name: backend
-        image: YOUR_DOCKERHUB_USERNAME/student-backend:latest
-        imagePullPolicy: Always
+        image: anasfida/student-backend:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5000
           name: api-port
