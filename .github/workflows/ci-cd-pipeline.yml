@@ -347,13 +347,12 @@ jobs:
         with:
           node-version: '18'
       
-      - name: Install Selenium Dependencies
+      - name: Install Selenium Dependencies (Firefox)
         working-directory: ./selenium-tests
         run: |
           npm install
-          # Install Chrome for headless testing
           sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver
+          sudo apt-get install -y firefox-geckodriver
       
       - name: Azure Login
         uses: azure/login@v1
@@ -393,7 +392,7 @@ jobs:
         working-directory: ./selenium-tests
         env:
           BASE_URL: ${{ env.APP_URL }}
-          BROWSER: chrome
+          BROWSER: firefox
           HEADLESS: true
         run: |
           node test-runner.js
