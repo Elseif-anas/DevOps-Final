@@ -351,8 +351,23 @@ jobs:
         working-directory: ./selenium-tests
         run: |
           npm install
+          
           sudo apt-get update
-          sudo apt-get install -y firefox-geckodriver
+          
+          # Install Firefox ESR (works on GitHub Actions)
+          sudo apt-get install -y firefox
+          
+          # Install Geckodriver (official tar.gz)
+          GECKO_VERSION=$(curl -s https://api.github.com/repos/mozilla/geckodriver/releases/latest | grep tag_name | cut -d '"' -f 4)
+          echo "Latest geckodriver: $GECKO_VERSION"
+
+          wget https://github.com/mozilla/geckodriver/releases/download/$GECKO_VERSION/geckodriver-$GECKO_VERSION-linux64.tar.gz
+          tar -xvzf geckodriver-$GECKO_VERSION-linux64.tar.gz
+          sudo mv geckodriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/geckodriver
+
+          geckodriver --version
+          firefox --version
       
       - name: Azure Login
         uses: azure/login@v1
