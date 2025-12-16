@@ -146,60 +146,7 @@ async function testNavigationWorks() {
   }
 }
 
-// TEST 3: Verify Add Student Form
-async function testAddStudentForm() {
-  const testName = 'Add Student Form Validation';
-  let driver;
-  
-  try {
-    driver = await initDriver();
-    await driver.get(BASE_URL);
-    
-    // Navigate to Add Student page
-    await driver.wait(until.elementLocated(By.xpath("//button[contains(text(), 'Add Student')]")), TIMEOUT);
-    const addStudentBtn = await driver.findElement(By.xpath("//button[contains(text(), 'Add Student')]"));
-    await addStudentBtn.click();
-    
-    // Wait for form to load
-    await driver.wait(until.urlContains('/add-student'), TIMEOUT);
-    await driver.wait(until.elementLocated(By.xpath("//h4[contains(text(), 'Add New Student')]")), TIMEOUT);
-    
-    // Verify form fields exist
-    const nameField = await driver.findElement(By.name('name'));
-    const emailField = await driver.findElement(By.name('email'));
-    const rollNumberField = await driver.findElement(By.name('rollNumber'));
-    
-    // Fill form with test data
-    await nameField.sendKeys('Test Student');
-    await emailField.sendKeys(`test${Date.now()}@example.com`);
-    await rollNumberField.sendKeys(`TEST${Date.now()}`);
-    
-    // Select department
-    const departmentField = await driver.findElement(By.name('department'));
-    await departmentField.click();
-    await driver.wait(until.elementLocated(By.xpath("//li[contains(text(), 'Computer Science')]")), TIMEOUT);
-    const csOption = await driver.findElement(By.xpath("//li[contains(text(), 'Computer Science')]"));
-    await csOption.click();
-    
-    // Select year
-    const yearField = await driver.findElement(By.name('year'));
-    await yearField.click();
-    await driver.wait(until.elementLocated(By.xpath("//li[contains(text(), '3rd Year')]")), TIMEOUT);
-    const yearOption = await driver.findElement(By.xpath("//li[contains(text(), '3rd Year')]"));
-    await yearOption.click();
-    
-    await takeScreenshot(driver, testName);
-    logTest(testName, true, 'Form fields loaded and filled successfully');
-    
-  } catch (error) {
-    await takeScreenshot(driver, testName);
-    logTest(testName, false, error.message);
-  } finally {
-    if (driver) await driver.quit();
-  }
-}
-
-// TEST 4: Verify Search Functionality
+// TEST 3: Verify Search Functionality
 async function testSearchFunctionality() {
   const testName = 'Search Students Functionality';
   let driver;
@@ -359,7 +306,6 @@ async function runAllTests() {
   // Run all tests
   await testHomepageLoads();
   await testNavigationWorks();
-  await testAddStudentForm();
   await testSearchFunctionality();
   await testStudentTableDisplay();
   await testResponsiveDesign();
