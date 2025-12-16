@@ -1,6 +1,14 @@
 const request = require('supertest');
 const app = require('../server');
 
+// Close server after all tests
+afterAll(async () => {
+  await new Promise(resolve => setTimeout(resolve, 500));
+  if (app.server) {
+    await app.server.close();
+  }
+});
+
 describe('API Health Check', () => {
   test('GET /health should return status UP', async () => {
     const response = await request(app).get('/health');
