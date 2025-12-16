@@ -3,7 +3,7 @@ const chrome = require('selenium-webdriver/chrome');
 const firefox = require('selenium-webdriver/firefox');
 
 // Configuration
-const BASE_URL = process.env.BASE_URL || 'http://localhost:80';
+const BASE_URL = process.env.BASE_URL || 'http://20.247.228.232';
 const BROWSER = process.env.BROWSER || 'chrome';
 const TIMEOUT = 10000;
 
