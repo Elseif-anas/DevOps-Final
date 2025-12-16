@@ -156,6 +156,20 @@ const Home = () => {
           ))}
         </Grid>
       </Box>
+
+      {/* Footer */}
+      <Box
+        sx={{
+          mt: 8,
+          py: 3,
+          textAlign: 'center',
+          borderTop: '2px solid rgba(255,255,255,0.1)',
+        }}
+      >
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          Made by FA22-BCS-065
+        </Typography>
+      </Box>
     </Container>
   );
 };
