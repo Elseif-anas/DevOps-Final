@@ -78,8 +78,9 @@ jobs:
         working-directory: ./frontend
         run: npm ci
       
-      - name: Skip Frontend Tests (Handled by Selenium)
-        run: echo "Frontend tests skipped – Selenium used instead"
+      - name: Run Frontend Tests
+        working-directory: ./frontend
+        run: CI=true npm test -- --passWithNoTests
         env:
           CI: true
       
