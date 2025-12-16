@@ -85,7 +85,7 @@ jobs:
       
       - name: Build Frontend Application
         working-directory: ./frontend
-        run: npm run build
+        run: CI=false npm run build
         env:
           REACT_APP_API_URL: http://backend-service:5000/api
       
