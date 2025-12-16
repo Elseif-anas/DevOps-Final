@@ -71,7 +71,7 @@ const Home = () => {
           Welcome to Student Management System
         </Typography>
         <Typography variant="h6" sx={{ mb: 3, opacity: 0.9 }}>
-          Manage your students efficiently and effectively
+          A CRUD Based Application to Manage Student Records Efficiently
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Button
