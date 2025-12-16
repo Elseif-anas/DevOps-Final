@@ -76,7 +76,7 @@ jobs:
       
       - name: Install Frontend Dependencies
         working-directory: ./frontend
-        run: npm Install
+        run: npm install
       
       - name: Run Frontend Tests
         working-directory: ./frontend
