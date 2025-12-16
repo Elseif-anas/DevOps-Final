@@ -347,21 +347,26 @@ jobs:
         with:
           node-version: '18'
       
-      - name: Install Selenium Dependencies (Firefox)
+      - name: Install Selenium Dependencies (Firefox + Geckodriver)
         working-directory: ./selenium-tests
         run: |
           npm install
-          
+
           sudo apt-get update
-          
+
           # Install Firefox ESR (works on GitHub Actions)
           sudo apt-get install -y firefox
-          
-          # Install Geckodriver (official tar.gz)
-          GECKO_VERSION=$(curl -s https://api.github.com/repos/mozilla/geckodriver/releases/latest | grep tag_name | cut -d '"' -f 4)
-          echo "Latest geckodriver: $GECKO_VERSION"
 
+          # Fetch correct latest geckodriver version tag (e.g., v0.34.0)
+          GECKO_VERSION=$(curl -s https://api.github.com/repos/mozilla/geckodriver/releases/latest \
+            | grep '"tag_name"' \
+            | sed -E 's/.*"([^"]+)".*/\1/')
+
+          echo "Latest Geckodriver version: $GECKO_VERSION"
+
+          # Download correct Linux 64-bit tarball
           wget https://github.com/mozilla/geckodriver/releases/download/$GECKO_VERSION/geckodriver-$GECKO_VERSION-linux64.tar.gz
+
           tar -xvzf geckodriver-$GECKO_VERSION-linux64.tar.gz
           sudo mv geckodriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/geckodriver
