@@ -22,7 +22,6 @@ const Home = () => {
 
   useEffect(() => {
     fetchStudentCount();
-    alert('Hello! Welcome to Student Management System');
   }, []);
 
   const fetchStudentCount = async () => {
